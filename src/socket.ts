@@ -68,20 +68,25 @@ export default function socket({ io }: { io: Server }) {
       }
     });
 
+    // TODO: add transaction
     client.on(EVENTS.CLIENT.MESSAGE_SENT, async (message: ClientChatMessage) => {      
       const senderUserId = message.user.id;
       const roomId = message.roomId;
       const room = await Room.findOne({ _id: roomId, "participants.id": senderUserId });
-      
       if (!room) {
         return;
       }
-      const msg = await ChatMessage.create(message);
-      client.to(roomId.toString()).emit(EVENTS.CLIENT.MESSAGE_SENT, msg);
-      const participants = room.participants;
-      const otherParticipants = participants.filter((p) => p.id != senderUserId).map((other) => other.id);
+      const otherParticipants = room.participants.filter((p) => p.id != senderUserId).map((other) => other.id);
       console.log(otherParticipants);
-      // await Notifications.updateMany({ userId: { $in: otherParticipants } }, { $inc: { unread_messages: 1 } }, { upsert: true, multi: true });
+      const msg = await ChatMessage.create(message);
+      // await Room.updateOne({ _id: roomId, "participants.id": {$nin: [otherParticipants] }, {});
+      await Room.findOneAndUpdate(
+        { _id: roomId, "participants.id": { $all: otherParticipants } },
+        { $inc: { "participants.$.unread_msg_count": 1 }, $set: { lastMessage: { createdAt: new Date(), sender_name: msg.user.name, text: msg.text } } },
+      {multi: true}
+      );
+
+      client.to(roomId.toString()).emit(EVENTS.CLIENT.MESSAGE_SENT, msg);
       await incrementUnreadMessagesCount(otherParticipants);
     });
 

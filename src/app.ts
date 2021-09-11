@@ -17,9 +17,12 @@ import LoginBody from './body-interfaces/login.body';
 import jwt from 'jsonwebtoken';
 import { ObjectId } from 'mongodb';
 
-import lodash from 'lodash';
+import lodash, { join } from 'lodash';
 import verifyToken from './middleware/verifyToken';
 import makeSetUpdate from './utils/makeSetOpObj';
+import Joi from 'joi';
+import userExists from './user/userExists';
+
 
 
 const token =
@@ -51,7 +54,7 @@ io.use((client: Socket, next) => {
   next();
 });
 
-app.get('/', verifyToken, (_, res) => {
+app.get('/api/protected', verifyToken, (_, res) => {
   // const client = clientIO('http://localhost:4000');
   // client.emit(EVENTS.CLIENT.DEMO, { event: 'demo', value: 10 });
   // io.emit(EVENTS.CLIENT.TYPING, true);
@@ -71,6 +74,7 @@ app.get('/deneme', async (_, __) => {
 app.post('/api/login', async (req, res, next) => {
   const { error, value } = v.loginValidation(req.body);
   if (error) {
+    console.log(error);
     res.status(400).send(makeError(error));
     return
   }
@@ -78,13 +82,16 @@ app.post('/api/login', async (req, res, next) => {
   const user = await User.findOne({ username: username }).lean();
 
   if (!user) {
-    res.status(400).send({ error: 'Wrong username or password!' });
+    console.log(user);
+    res.status(404).send({ error: 'Wrong username or password!' });
     return;
   }
+  console.log(password, user.password);
   const matched = await compare(password, user.password);
 
   if (!matched) {
-    res.status(400).send({error: 'Wrong username or password!'});
+    console.log(matched);
+    res.status(404).send({error: 'Wrong username or password!'});
     return;
   }
 
@@ -108,7 +115,7 @@ app.post('/api/register', async (req, res, next) => {
   const usernameExists = await User.findOne({ username: username });
 
   if (usernameExists) {
-    return res.status(400).send({error: 'Username already exists!'});
+    return res.status(404).send({error: 'Username already exists!'});
   }
 
   const hashedPassword = await hash(password, 10);
@@ -122,11 +129,48 @@ app.post('/api/register', async (req, res, next) => {
   try {
     const savedUser = await user.save();
     const passwordExtractedUser = lodash.omit(savedUser, ['password']);
-    res.status(200).send(passwordExtractedUser);
+    res.status(201).send(passwordExtractedUser);
   } catch (error) {
-    res.status(400).send(error);
+    res.status(500).send(error);
   }
 });
+
+
+
+
+
+app.get('/api/register/availability', async (req, res, _) => {
+  console.log(req.method, '/api/register/availability');
+  const username = req.query.username as string || undefined;
+    const email = req.query.email as string || undefined;
+  
+  if (username && email) {
+    res.status(422).send({ error: 'Incorrect use of endpoint' });
+  }
+    
+  const { error, value } = v.avaiabilityQueryValidation(req.query);
+  if (error) {
+    return res.status(422).send(false);
+  }
+
+
+  const filter: Partial<{email: string, username: string}> = {} ;
+  if (username) {
+    filter.username = username;
+  }
+  if (email) {
+    filter.email = email;
+  }
+  console.log(filter);
+  const exists = await userExists(filter);
+  res.status(200).send(!exists);
+});
+
+// app.patch('/api/me/prefs', verifyToken, async (req, res, _) => {
+
+  
+//   res.sendStatus(200);
+// });
 
 app.patch('/api/me/prefs', verifyToken, async (req, res, next) => {
   const {error, value } = v.prefsValidation(req.body);
@@ -146,23 +190,62 @@ app.patch('/api/me/prefs', verifyToken, async (req, res, next) => {
 
 app.get('/api/chat/rooms/:roomId', async (req, res) => {
   const roomId = req.params.roomId;
+  const {value, error} = v.fetchChatMessagesQueryValidaton(req.query);
+  if (error) {
+    return res.status(422).send(makeError(error));
+  }
+  const {page, limit, fetchedAt }: { limit: number, page: number, fetchedAt: string | undefined } = value;
+  
+  const query = {roomId: roomId};
+  if (fetchedAt) {
+    // @ts-ignore
+    query.createdAt = { $lte: fetchedAt };
+  }
 
-  // @ts-ignore
-  const limit = Number.parseInt(req.query.limit || '') || 5;
-  // const skip =
-  // @ts-ignore
-  const page = Number.parseInt(req.query.page || '') || 1;
+  console.log(query)
 
-  const messages = await ChatMessage.find({ roomId: roomId })
+  // TODO: add index for createdAt
+  const messages = await ChatMessage.find(query)
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit)
     .lean();
 
-  res.status(200).send(messages.reverse());
+  res.status(200).send({messages, fetchedAt: fetchedAt || new Date().toISOString()});
 });
 
-app.post('/api/chat', async (req, res) => {
+app.get('/api/chat', verifyToken, async (req, res) => {
+  // const roomId = req.params.roomId;
+  // @ts-ignore
+  const user = req.user;
+  console.log(user);
+  try {
+    const fetchedChats = await Room.find({ 'participants.id': user._id }).lean();
+    const chats = fetchedChats.map((chatRoom) => {
+      return { _id: chatRoom._id, createdAt: chatRoom.createdAt, lastMessage: chatRoom.lastMessage, user: chatRoom.participants.filter((p) => p.id == user._id)[0], avatar: chatRoom.avatar  };
+    });
+
+    res.status(200).send(chats);
+    
+  } catch (error) {
+  res.status(400).send({error: 'Unexpected'});
+  }
+  // // @ts-ignore
+  // const limit = Number.parseInt(req.query.limit || '') || 5;
+  // // const skip =
+  // // @ts-ignore
+  // const page = Number.parseInt(req.query.page || '') || 1;
+
+  // const messages = await ChatMessage.find({ roomId: roomId })
+  //   .sort({ createdAt: -1 })
+  //   .skip((page - 1) * limit)
+  //   .limit(limit)
+  //   .lean();
+
+  // res.status(200).send(messages.reverse());
+});
+
+app.post('/api/chat/send', async (req, res) => {
   
   console.log(req.body);
   // TODO: is this user in the room
