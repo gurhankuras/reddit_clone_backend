@@ -35,6 +35,7 @@ export const EVENTS = {
   SERVER: {
     MESSAGES_LOADED: 'messages_loaded',
     NOTIFICATION: 'notification',
+    LAST_MESSAGE: 'last_message'
   },
 };
 
@@ -85,10 +86,14 @@ export default function socket({ io }: { io: Server }) {
         { $inc: { "participants.$.unread_msg_count": 1 }, $set: { lastMessage: { createdAt: new Date(), sender_name: msg.user.name, text: msg.text } } },
       {multi: true}
       );
+    
 
       client.to(roomId.toString()).emit(EVENTS.CLIENT.MESSAGE_SENT, msg);
+      client.to(roomId.toString()).emit(EVENTS.SERVER.LAST_MESSAGE, msg);
+
       await incrementUnreadMessagesCount(otherParticipants);
     });
+
 
     client.on(EVENTS.CLIENT.TYPING, (_) => {
       console.log('typing calisti');

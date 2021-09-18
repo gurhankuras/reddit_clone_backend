@@ -5,6 +5,11 @@ export interface UserDocument extends mongoose.Document {
   username: string;
   email: string;
   password: string;
+  badgeIndicators: {
+    chatMessages: number,
+    inboxMessages: number,
+    inboxActivities: number,
+  }
   prefs: {
     online: boolean,
     forced_offline: boolean,
@@ -48,6 +53,11 @@ const UserSchema = new mongoose.Schema(
       over_18: { type: Boolean, default: false },
       verified: { type: Boolean, default: false },
       num_friends: {type: Number, default: 0, min: 0}
+    },
+    badgeIndicators: {
+      chatMessages: {type: Number, default: 0, min: 0},
+      inboxMessages: {type: Number, default: 0, min: 0},
+      inboxActivities: {type: Number, default: 0, min: 0},
     }
 
   },

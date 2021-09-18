@@ -3,6 +3,7 @@ import { join } from 'lodash';
 // import { } from 'express';
 
 
+const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 
 
 export const registerValidation = (body: any) => {
@@ -56,6 +57,21 @@ export const fetchChatMessagesQueryValidaton = (query: any) => {
     });
     
     return schema.validate(query);
+}
+
+export const inboxMessagesQueryValidaton = (query: any) => {
+    const schema = Joi.object({
+        since: Joi.string().isoDate().optional(),
+        all: Joi.bool().optional()
+    });
+    
+    return schema.validate(query);
+}
+
+export const validateId = (id: any) => {
+    // @ts-ignore
+    const schema = Joi.string().pattern(objectIdRegex).required();
+    return schema.validate(id);
 }
 
 

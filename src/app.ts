@@ -22,15 +22,41 @@ import verifyToken from './middleware/verifyToken';
 import makeSetUpdate from './utils/makeSetOpObj';
 import Joi from 'joi';
 import userExists from './user/userExists';
-
+import UserInbox from './userInbox/userInbox.model';
+import * as userInboxControllers from './controller/userInbox.controller';
 
 
 const token =
-'f-KOEFq-ToKiV2F5ioFA0j:APA91bH7QuVvAMjMqpZYVD8ShbcUZUL3p0SMqUNZwOjBwErn20jwHXXiGnaY4yNmW7RyVHh3Cs8N6gAWINOAw1u-5dTjU6QzNnqs_A3oxaSUSeinA0jyErp8Ap9FqlwnhslutgH4IUGT';
+'eUJ9KwYJS3yjO3OvyR7Zg5:APA91bHJlqihps9s4OMKSoCwEFqlta_RfCuO9KPGp19eElnzlpBL91PBXI0NcQuYfaVQyVZ4VXTyzdS2hhiWqojVoBSlEbzqIaENE2m8T9OQTCgzL-vqUxiD4bAYR0FdjzsWmjRjyKP3';
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
+
+const userNotifications = {
+  unread_messages_count: 1,
+  unread_activities_count: 4,
+  inbox_unread_messages_count: 100,
+}
+
+const activities = [
+  {
+    _id: '1',
+    itemId: '1',
+    title: '',
+    text: 'sasasas',
+    subredditName:'TowerOfGod',
+    createdAt: '2021-09-13T14:21:45.858',
+  },
+  {
+    _id: '2',
+    itemId: '2',
+    title: '',
+    text: 'sasasas',
+    subredditName:'TowerOfGod',
+    createdAt: '2021-09-13T14:21:45.858',
+  }
+];
 
 
 const app = express();
@@ -54,12 +80,12 @@ io.use((client: Socket, next) => {
   next();
 });
 
-app.get('/api/protected', verifyToken, (_, res) => {
-  // const client = clientIO('http://localhost:4000');
-  // client.emit(EVENTS.CLIENT.DEMO, { event: 'demo', value: 10 });
-  // io.emit(EVENTS.CLIENT.TYPING, true);
+app.get('/api/protected', verifyToken, async (req, res) => {
+  // @ts-ignore
+  const userId = req.user._id;
 
-  res.send(`Server is up`);
+  const user = await User.findById(userId, {password: 0}).lean();
+  return res.send(user);
 });
 
 
@@ -252,17 +278,39 @@ app.post('/api/chat/send', async (req, res) => {
   
   const message = await ChatMessage.create(req.body);
   io.in(req.body.roomId).emit(EVENTS.CLIENT.MESSAGE_SENT, message);
-  admin.messaging().sendToDevice(token, {
+  io.in(req.body.roomId).emit(EVENTS.SERVER.LAST_MESSAGE, message);
+
+  const a = await admin.messaging().sendToDevice(token, {
     notification: { body: req.body.text, title: req.body.user.name },
     data: { route: '/chatPage' },
   });
+  console.log(a);
   const room = await Room.findOne({ _id: req.body.roomId });
+  userNotifications.unread_messages_count += 1;
+  io.in(req.body.roomId).emit(EVENTS.SERVER.NOTIFICATION, userNotifications);
+
   if (room) {
     console.log(room._id);
 
   }
   res.sendStatus(200);
 });
+
+app.get('/api/notifications'/*, verifyToken*/, async (req, res) => {
+  res.send(userNotifications);
+});
+
+
+// INBOX
+app.get('/api/me/inbox/messages', verifyToken, userInboxControllers.getInboxMessages);
+app.post('/api/me/inbox/messages', verifyToken, userInboxControllers.postInboxMessage);
+app.post('/api/me/inbox/messages/mark-read', verifyToken, userInboxControllers.markInboxMessageAsRead);
+
+app.delete('/api/me/inbox/activities', verifyToken, userInboxControllers.deleteActivityMessage);
+app.get('/api/me/inbox/activities', verifyToken, userInboxControllers.getActivityMessages);
+app.post('/api/me/inbox/activities/demo', verifyToken, userInboxControllers.demoCreateActivityMessage);
+
+
 
 
 
