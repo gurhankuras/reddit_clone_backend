@@ -2,7 +2,7 @@ import { Request, Response} from 'express';
 // userInboxControllers
 import { ObjectId } from 'mongodb';
 import makeError from '../utils/makeError';
-import UserInbox from '../userInbox/userInbox.model';
+import UserInbox from '../model/userInbox.model';
 import * as v from '../schema/schemas';
 
 // /api/me/inbox/messages

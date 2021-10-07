@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import Notifications from "../notifications/notifications.model";
+import Notifications from "../model/notifications.model";
 
 export default async function incrementUnreadMessagesCount(userIds: ObjectId[]) {
     return Notifications.updateMany(
